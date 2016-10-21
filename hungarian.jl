@@ -1,10 +1,10 @@
-function hungarian(input)
+function hungarian{T<:Real}(input::Array{T,2})
     A = copy(input)
     rowLen, columnLen = size(A)
     # preliminaries
     # "no lines are covered;"
-    rowCovered = zeros(Bool, rowLen)
-    columnCovered = zeros(Bool, columnLen)
+    rowCovered = falses(rowLen)
+    columnCovered = falses(columnLen)
 
     # "no zeros are starred or primed."
     # we can use a sparse matrix Zs to store these three kinds of markers:
@@ -46,12 +46,17 @@ function hungarian(input)
         elseif stepNum == 2
             stepNum = step2!(Zs, rowCovered, columnCovered)
         elseif stepNum == 3
-            @show "ok"
+            stepNum = step3!(A, Zs, rowCovered, columnCovered)
         end
     end
+
+    return Zs
 end
 
-function step1!(Zs, rowCovered, columnCovered)
+function step1!(Zs::SparseMatrixCSC{Int,Int},
+                rowCovered::BitArray{1},
+                columnCovered::BitArray{1}
+               )
     columnLen = size(Zs)[2]
     rows = rowvals(Zs)
     # step 1
@@ -65,7 +70,13 @@ function step1!(Zs, rowCovered, columnCovered)
             if columnCovered[c] == false && rowCovered[r] == false
                 Zs[r,c] = 3
                 # "if there is a starred zero Z in this row"
-                columnZ = findfirst(Zs[r,:] .== 2)
+                columnZ = 0
+                for zc = 1:columnLen
+                    if Zs[r,zc] == 2
+                        columnZ = zc
+                        break
+                    end
+                end
                 if columnZ != 0
                     # "cover this row and uncover the column of Z"
                     rowCovered[r] = true
@@ -85,7 +96,10 @@ function step1!(Zs, rowCovered, columnCovered)
     return stepNum = 3
 end
 
-function step2!(Zs, rowCovered, columnCovered)
+function step2!(Zs::SparseMatrixCSC{Int,Int},
+                rowCovered::BitArray{1},
+                columnCovered::BitArray{1}
+               )
     ZsDims = size(Zs)
     rows = rowvals(Zs)
     # step 2
@@ -176,10 +190,34 @@ function step2!(Zs, rowCovered, columnCovered)
     end
 end
 
-function step3!(A, Zs, rowCovered, columnCovered)
+function step3!{T<:Real}(A::Array{T,2},
+                         Zs::SparseMatrixCSC{Int,Int},
+                         rowCovered::BitArray{1},
+                         columnCovered::BitArray{1}
+                        )
+    # step 3 (Step C)
+    # "let h denote the smallest uncovered element of the matrix;"
+    h = minimum(A[find(!rowCovered),find(!columnCovered)])
 
+    # use for-loops for better performance
+    for ii in CartesianRange(size(A))
+        # "add h to each covered row;"
+        if rowCovered[ii[1]]
+            A[ii] += h
+        end
+        # "then subtract h from each uncovered column."
+        if !columnCovered[ii[2]]
+            A[ii] -= h
+        end
+    end
+
+    # mark new zeros in Zs
+    for i in eachindex(A)
+        if A[i] == 0 && Zs[i] == 0
+            Zs[i] = 1
+        end
+    end
+
+    # "return to step 1."
+    return stepNum = 1
 end
-
-A = rand(10,10)
-
-hungarian(A)
